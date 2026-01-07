@@ -1,0 +1,5 @@
+{
+  "name": "RotationTool",
+  "description": "A comprehensive converter for Quaternions, Euler Angles (Scipy standard), Rotation Matrices, and Axis-Angles with real-time 3D visualization.",
+  "requestFramePermissions": []
+}
