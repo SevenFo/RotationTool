@@ -16,6 +16,38 @@ declare global {
       cylinderGeometry: any;
       meshStandardMaterial: any;
       arrowHelper: any;
+      
+      // Standard HTML elements
+      div: any;
+      span: any;
+      label: any;
+      input: any;
+      button: any;
+      select: any;
+      option: any;
+      header: any;
+      footer: any;
+      main: any;
+      section: any;
+      p: any;
+      h1: any;
+      h2: any;
+      h3: any;
+      h4: any;
+      h5: any;
+      h6: any;
+      code: any;
+      pre: any;
+      em: any;
+      strong: any;
+      a: any;
+      ul: any;
+      li: any;
+      form: any;
+      img: any;
+      canvas: any;
+      br: any;
+      hr: any;
     }
   }
 }

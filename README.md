@@ -1,20 +1,55 @@
-<div align="center">
-<img width="1200" height="475" alt="GHBanner" src="https://github.com/user-attachments/assets/0aa67016-6eaf-458a-adb2-6e31a0763ed6" />
-</div>
+# RotationTool
 
-# Run and deploy your AI Studio app
+**RotationTool** is a comprehensive 3D orientation math utility designed for developers, engineers, and students working with 3D graphics, robotics, or aerospace.
 
-This contains everything you need to run your app locally.
+> **Note**: This project was designed and generated with the assistance of **Google Gemini**.
 
-View your app in AI Studio: https://ai.studio/apps/drive/1b2aQewE44l1z1oW3J0VRXsE37hgMUu85
+## Features
 
-## Run Locally
+### 1. 3D Rotation Converter
+Seamlessly convert between different rotation representations:
+*   **Quaternions** (xyzw)
+*   **Euler Angles**
+    *   Supports all 12 axis sequences (XYZ, ZYX, etc.)
+    *   Supports both **Intrinsic** (Mobile/Local) and **Extrinsic** (Static/Global) frames.
+    *   Matches `scipy.spatial.transform.Rotation` standards.
+*   **Rotation Matrix** (3x3)
+*   **Axis-Angle**
 
-**Prerequisites:**  Node.js
+### 2. Quaternion Calculator
+Perform complex quaternion arithmetic with ease:
+*   Multiplication (A * B and B * A)
+*   Inversion & Conjugation
+*   **Python/Scipy Code Generation**: Automatically generates the corresponding Python code for your calculation to copy-paste into your scripts.
+*   **History Tracking**: Keep track of your recent calculations.
 
+### 3. Real-time Visualization
+*   Interactive 3D viewer powered by **Three.js**.
+*   Real-time updates as you modify values.
+*   Visualizes the orientation of the object relative to the world axes.
 
-1. Install dependencies:
-   `npm install`
-2. Set the `GEMINI_API_KEY` in [.env.local](.env.local) to your Gemini API key
-3. Run the app:
-   `npm run dev`
+## Development
+
+This project uses **React**, **Three.js**, **React Three Fiber**, and **Vite**.
+
+### Installation
+
+```bash
+npm install
+```
+
+### Run Locally
+
+```bash
+npm run dev
+```
+
+### Build
+
+```bash
+npm run build
+```
+
+## Deployment
+
+This repository is configured with **GitHub Actions** to automatically deploy to **GitHub Pages** on every push to the `main` branch.
