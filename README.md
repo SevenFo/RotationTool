@@ -1,5 +1,7 @@
 # RotationTool
 
+[![GitHub](https://img.shields.io/badge/GitHub-SevenFo%2FRotationTool-blue?style=flat&logo=github)](https://github.com/SevenFo/RotationTool)
+
 **RotationTool** is a comprehensive 3D orientation math utility designed for developers, engineers, and students working with 3D graphics, robotics, or aerospace.
 
 > **Note**: This project was designed and generated with the assistance of **Google Gemini**.
@@ -15,6 +17,10 @@ Seamlessly convert between different rotation representations:
     *   Matches `scipy.spatial.transform.Rotation` standards.
 *   **Rotation Matrix** (3x3)
 *   **Axis-Angle**
+
+**Advanced Features:**
+*   **Coordinate System Converter**: Transform rotations between different coordinate systems (e.g., **ROS**, **USD**, **World**) or define custom axis mappings (e.g., "RFU").
+*   **Dynamic Code Snippets**: Automatically generates Python (`scipy.spatial.transform`) code snippets that match your exact configuration, including axis definitions and conversions.
 
 ### 2. Quaternion Calculator
 Perform complex quaternion arithmetic with ease:
