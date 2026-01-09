@@ -1,10 +1,70 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import * as THREE from 'three';
 import { NumberInput, SectionTitle, MatrixInput } from './ui/InputFields';
 import Visualizer from './Visualizer';
 import { EulerOrder, EulerMode, AxisSystem } from '../types';
-import { round, toDegrees, toRadians, getQuaternionFromEuler, getEulerFromQuaternion, convertRotationBasis } from '../utils/math';
-import { Rotate3D, Cuboid, RefreshCw, Grid3X3, Zap, Globe, ArrowRight, Settings2, Info, Code, Check, Copy } from 'lucide-react';
+import { round, toDegrees, toRadians, getQuaternionFromEuler, getEulerFromQuaternion, convertRotationBasis, parseCustomAxis } from '../utils/math';
+import { Rotate3D, Cuboid, RefreshCw, Grid3X3, Zap, Globe, ArrowRight, Settings2, Info, Code, Check, Copy, AlertCircle, HelpCircle } from 'lucide-react';
+
+// Helper for axis selector - Defined outside to prevent re-renders losing focus
+const AxisSelector = ({ 
+  mode, setMode, preset, setPreset, customStr, setCustomStr, validation 
+}: { 
+  mode: 'preset'|'custom', 
+  setMode: (m:'preset'|'custom')=>void,
+  preset: AxisSystem,
+  setPreset: (v:AxisSystem)=>void,
+  customStr: string,
+  setCustomStr: (s:string)=>void,
+  validation: { valid: boolean; error?: string }
+}) => {
+  return (
+    <div className="space-y-2">
+      <select 
+        value={mode === 'preset' ? (preset as string) : 'custom'} 
+        onChange={(e) => {
+          if (e.target.value === 'custom') {
+            setMode('custom');
+          } else {
+            setMode('preset');
+            setPreset(e.target.value as AxisSystem);
+          }
+        }}
+        className="w-full bg-white border border-indigo-200 rounded px-2 py-1.5 text-indigo-900 focus:ring-indigo-500 text-sm"
+      >
+         <option value="ros">ROS Camera (+Y Down, +Z Fwd)</option>
+         <option value="world">World (+Z Up, +X Fwd)</option>
+         <option value="usd">USD (+Y Up, -Z Fwd)</option>
+         <option value="custom">Custom Format...</option>
+      </select>
+      
+      {mode === 'custom' && (
+        <div className="relative">
+           <input 
+             type="text" 
+             maxLength={3}
+             value={customStr}
+             onChange={(e) => setCustomStr(e.target.value.toUpperCase())}
+             placeholder="e.g. RFU"
+             className={`w-full border rounded px-2 py-1.5 text-sm font-mono uppercase focus:outline-none focus:ring-2 ${validation.valid ? 'border-indigo-200 focus:ring-indigo-500' : 'border-red-300 focus:ring-red-500 bg-red-50'}`}
+           />
+           <div className="absolute right-2 top-1/2 -translate-y-1/2">
+             {validation.valid ? (
+               <Check size={14} className="text-emerald-500" />
+             ) : (
+               <div className="group relative">
+                  <AlertCircle size={14} className="text-red-500 cursor-help" />
+                  <div className="absolute right-0 bottom-full mb-2 w-32 text-[10px] bg-red-600 text-white p-2 rounded shadow-lg pointer-events-none opacity-0 group-hover:opacity-100 transition-opacity whitespace-normal z-50">
+                    {validation.error}
+                  </div>
+               </div>
+             )}
+           </div>
+        </div>
+      )}
+    </div>
+  );
+};
 
 export const RotationConverter: React.FC = () => {
   // MASTER STATE: Everything is derived from this quaternion
@@ -24,9 +84,22 @@ export const RotationConverter: React.FC = () => {
   const [lastUpdateSource, setLastUpdateSource] = useState<'euler' | 'other'>('other');
   
   // AXIS CONVERSION STATE
-  const [inputAxis, setInputAxis] = useState<AxisSystem>('ros');
-  const [outputAxis, setOutputAxis] = useState<AxisSystem>('world');
+  const [inputAxisMode, setInputAxisMode] = useState<'preset' | 'custom'>('preset');
+  const [inputPreset, setInputPreset] = useState<AxisSystem>('ros');
+  const [inputCustomStr, setInputCustomStr] = useState("RFU");
+  
+  const [outputAxisMode, setOutputAxisMode] = useState<'preset' | 'custom'>('preset');
+  const [outputPreset, setOutputPreset] = useState<AxisSystem>('world');
+  const [outputCustomStr, setOutputCustomStr] = useState("RFU");
+  
   const [snippetCopied, setSnippetCopied] = useState(false);
+
+  // Validate Custom Inputs
+  const inputCustomValidation = parseCustomAxis(inputCustomStr);
+  const outputCustomValidation = parseCustomAxis(outputCustomStr);
+
+  const finalInputAxis = inputAxisMode === 'preset' ? inputPreset : (inputCustomValidation.valid ? inputCustomStr : 'usd');
+  const finalOutputAxis = outputAxisMode === 'preset' ? outputPreset : (outputCustomValidation.valid ? outputCustomStr : 'usd');
 
   // DERIVED VALUES 
   const validQuat = quaternion.clone();
@@ -73,7 +146,7 @@ export const RotationConverter: React.FC = () => {
   const rotationMatrix = new THREE.Matrix4().makeRotationFromQuaternion(validQuat);
 
   // CONVERTED AXIS VALUES
-  const convertedQuat = convertRotationBasis(validQuat, inputAxis, outputAxis);
+  const convertedQuat = convertRotationBasis(validQuat, finalInputAxis, finalOutputAxis);
   const convertedEuler = getEulerFromQuaternion(convertedQuat, converterEulerOrder, converterEulerMode);
 
   // HANDLERS
@@ -272,7 +345,17 @@ print(f"Quaternion (xyzw): {r.as_quat()}")
         <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm">
           <SectionTitle>
             <Rotate3D size={20} className="text-indigo-500" />
-            Euler Angles (Input)
+            <span>Euler Angles (Input)</span>
+            <div className="group relative flex items-center">
+               <HelpCircle size={14} className="text-slate-400 cursor-help hover:text-indigo-600 transition-colors" />
+               <div className="absolute left-1/2 -translate-x-1/2 bottom-full mb-2 w-64 bg-slate-800 text-white text-[10px] p-3 rounded shadow-lg opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-50 font-sans font-normal leading-relaxed">
+                   <h4 className="font-bold text-indigo-300 mb-2 uppercase">Simulator Defaults</h4>
+                   <ul className="space-y-1.5 text-slate-300">
+                       <li><strong className="text-white">Isaac Sim (USD):</strong> Intrinsic XYZ</li>
+                       <li><strong className="text-white">ROS (TF):</strong> Intrinsic ZYX <span className="text-slate-500">(Yaw-Pitch-Roll)</span></li>
+                   </ul>
+               </div>
+           </div>
           </SectionTitle>
           
           <div className="flex flex-wrap gap-4 mb-6">
@@ -363,39 +446,67 @@ print(f"Quaternion (xyzw): {r.as_quat()}")
         </div>
 
         {/* AXIS CONVERSION (RIGHT COLUMN) */}
-        <div className="bg-indigo-50 p-6 rounded-xl border border-indigo-100 shadow-sm">
+        <div className="bg-indigo-50 p-6 rounded-xl border border-indigo-100 shadow-sm relative">
            <SectionTitle>
-             <Globe size={20} className="text-indigo-600" />
-             <span className="text-indigo-900">Coordinate System Converter</span>
+             <div className="flex items-center gap-2">
+               <Globe size={20} className="text-indigo-600" />
+               <span className="text-indigo-900">Coordinate System Converter</span>
+               
+               {/* Documentation Tooltip */}
+               <div className="group relative flex items-center">
+                  <HelpCircle size={14} className="text-indigo-400 cursor-help hover:text-indigo-600 transition-colors" />
+                  <div className="absolute right-0 top-full mt-2 w-80 bg-slate-800 text-white text-[10px] p-4 rounded-lg shadow-xl opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-50 font-sans leading-relaxed border border-slate-700">
+                      <h4 className="font-bold text-indigo-300 mb-2 uppercase">Preset Definitions</h4>
+                      <ul className="space-y-1 mb-3 text-slate-300">
+                        <li><strong className="text-white">USD:</strong> +X Right, +Y Up, -Z Forward (Format: RUB)</li>
+                        <li><strong className="text-white">ROS:</strong> +X Fwd, +Y Left, +Z Up (Format: FLU)</li>
+                        <li><strong className="text-white">World:</strong> Custom user preset (defaults to Z-Up)</li>
+                      </ul>
+                      <div className="h-px bg-slate-700 my-2"></div>
+                      <h4 className="font-bold text-indigo-300 mb-2 uppercase">Custom Format Syntax</h4>
+                      <p className="mb-2">Define your frame's X, Y, Z axes using 3 letters:</p>
+                      <ul className="grid grid-cols-2 gap-x-2 gap-y-1 text-slate-300 mb-2">
+                        <li><span className="text-white font-mono">R</span> = Right</li>
+                        <li><span className="text-white font-mono">L</span> = Left</li>
+                        <li><span className="text-white font-mono">F</span> = Forward</li>
+                        <li><span className="text-white font-mono">B</span> = Back</li>
+                        <li><span className="text-white font-mono">U</span> = Up</li>
+                        <li><span className="text-white font-mono">D</span> = Down</li>
+                      </ul>
+                      <p className="text-slate-400 italic">Example: "RFU" means X is Right, Y is Forward, Z is Up.</p>
+                      <p className="text-slate-400 italic mt-1">Note: Must form a valid Right-Handed System (X × Y = Z).</p>
+                  </div>
+               </div>
+             </div>
            </SectionTitle>
            <div className="flex flex-col gap-4">
-             <div className="flex items-center gap-4 text-sm">
+             <div className="flex items-start gap-4 text-sm">
                 <div className="flex-1">
                    <label className="block text-[10px] font-bold text-indigo-400 uppercase mb-1">Input Axis (Current)</label>
-                   <select 
-                      value={inputAxis} 
-                      onChange={(e) => setInputAxis(e.target.value as AxisSystem)}
-                      className="w-full bg-white border border-indigo-200 rounded px-2 py-1.5 text-indigo-900 focus:ring-indigo-500"
-                   >
-                      <option value="ros">ROS Camera (+Y Down, +Z Fwd)</option>
-                      <option value="world">World (+Z Up, +X Fwd)</option>
-                      <option value="usd">USD (+Y Up, -Z Fwd)</option>
-                   </select>
+                   <AxisSelector 
+                     mode={inputAxisMode}
+                     setMode={setInputAxisMode}
+                     preset={inputPreset}
+                     setPreset={setInputPreset}
+                     customStr={inputCustomStr}
+                     setCustomStr={setInputCustomStr}
+                     validation={inputCustomValidation}
+                   />
                 </div>
-                <div className="pt-5 text-indigo-300">
+                <div className="pt-6 text-indigo-300">
                    <ArrowRight size={20} />
                 </div>
                 <div className="flex-1">
                    <label className="block text-[10px] font-bold text-indigo-400 uppercase mb-1">Output Axis (Target)</label>
-                   <select 
-                      value={outputAxis} 
-                      onChange={(e) => setOutputAxis(e.target.value as AxisSystem)}
-                      className="w-full bg-white border border-indigo-200 rounded px-2 py-1.5 text-indigo-900 focus:ring-indigo-500"
-                   >
-                      <option value="ros">ROS Camera (+Y Down, +Z Fwd)</option>
-                      <option value="world">World (+Z Up, +X Fwd)</option>
-                      <option value="usd">USD (+Y Up, -Z Fwd)</option>
-                   </select>
+                   <AxisSelector 
+                     mode={outputAxisMode}
+                     setMode={setOutputAxisMode}
+                     preset={outputPreset}
+                     setPreset={setOutputPreset}
+                     customStr={outputCustomStr}
+                     setCustomStr={setOutputCustomStr}
+                     validation={outputCustomValidation}
+                   />
                 </div>
              </div>
 

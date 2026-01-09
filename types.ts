@@ -20,4 +20,4 @@ export interface AxisAngleState {
   angle: number; // in radians
 }
 
-export type AxisSystem = 'ros' | 'world' | 'usd';
+export type AxisSystem = 'ros' | 'world' | 'usd' | string;
