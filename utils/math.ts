@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { EulerOrder, EulerMode } from '../types';
+import { EulerOrder, EulerMode, AxisSystem } from '../types';
 
 export const toDegrees = (rad: number) => rad * (180 / Math.PI);
 export const toRadians = (deg: number) => deg * (Math.PI / 180);
@@ -24,7 +24,8 @@ export const formatMatrix = (elements: number[]): string => {
 };
 
 // Handles the Scipy specific logic for Extrinsic conversions
-// Scipy Extrinsic 'XYZ' is equivalent to Intrinsic 'ZYX' with reversed values (mathematically R_z * R_y * R_x)
+// Scipy Extrinsic 'XYZ' is equivalent to Intrinsic 'ZYX' (mathematically R_z * R_y * R_x)
+// Note: Three.js Euler(x, y, z, order) arguments are ALWAYS angles for the specific axes X, Y, Z.
 export const getQuaternionFromEuler = (
   x: number, 
   y: number, 
@@ -40,14 +41,11 @@ export const getQuaternionFromEuler = (
     q.setFromEuler(euler);
   } else {
     // Extrinsic rotation (Static Frame)
-    // To achieve Extrinsic XYZ, we can just multiply the Quaternions in reverse order relative to global axes
-    // Or simpler: Intrinsic 'XYZ' = R_x * R_y' * R_z''
-    // Extrinsic 'XYZ' = R_x * R_y * R_z (applied left to right on column vector is R_z * R_y * R_x... wait. Scipy uses active rotations)
-    // Actually, the easiest mapping for Scipy:
-    // Scipy Extrinsic('XYZ', a, b, c) === Scipy Intrinsic('ZYX', c, b, a)
-    
+    // Extrinsic 'XYZ' (alpha, beta, gamma) is equivalent to Intrinsic 'ZYX' (gamma, beta, alpha)
+    // where alpha is still the rotation around X, beta around Y, etc.
     const reversedOrder = order.split('').reverse().join('') as EulerOrder;
-    const euler = new THREE.Euler(z, y, x, reversedOrder);
+    // We pass (x, y, z) directly because Three.js applies 'reversedOrder' logic to these specific axis angles.
+    const euler = new THREE.Euler(x, y, z, reversedOrder);
     q.setFromEuler(euler);
   }
   return q;
@@ -65,14 +63,114 @@ export const getEulerFromQuaternion = (
     e.setFromQuaternion(q, order);
     return { x: e.x, y: e.y, z: e.z };
   } else {
-    // Reverse logic of the setter
-    // We want output for Extrinsic 'XYZ'. 
-    // We calculate Intrinsic 'ZYX'.
-    // The result {x,y,z} of Intrinsic ZYX maps to {c,b,a} of Extrinsic XYZ.
+    // Reverse logic for Extrinsic
     const reversedOrder = order.split('').reverse().join('') as EulerOrder;
     const e = new THREE.Euler(0, 0, 0, reversedOrder);
     e.setFromQuaternion(q, reversedOrder);
-    // Map back: Intrinsic ZYX (x,y,z) -> Extrinsic XYZ (z,y,x)
-    return { x: e.z, y: e.y, z: e.x };
+    // Three.js puts the X-axis angle in e.x, Y in e.y, Z in e.z regardless of order.
+    return { x: e.x, y: e.y, z: e.z };
   }
+};
+
+/**
+ * Coordinate System Conversion Matrices
+ * 
+ * Implements the exact transformation matrices provided.
+ * Note: Three.js Matrix4.set() takes arguments in Row-Major order (n11, n12, n13, n14...),
+ * which matches the visual layout of the np.array definitions below.
+ */
+
+// from ROS camera convention to USD camera convention
+// U_R_TRANSFORM = np.array([[1, 0, 0, 0], [0, -1, 0, 0], [0, 0, -1, 0], [0, 0, 0, 1]])
+const U_R_TRANSFORM = new THREE.Matrix4().set(
+  1,  0,  0, 0,
+  0, -1,  0, 0,
+  0,  0, -1, 0,
+  0,  0,  0, 1
+);
+
+// from USD camera convention to ROS camera convention
+// R_U_TRANSFORM = np.array([[1, 0, 0, 0], [0, -1, 0, 0], [0, 0, -1, 0], [0, 0, 0, 1]])
+const R_U_TRANSFORM = new THREE.Matrix4().set(
+  1,  0,  0, 0,
+  0, -1,  0, 0,
+  0,  0, -1, 0,
+  0,  0,  0, 1
+);
+
+// from USD camera convention to World camera convention
+// W_U_TRANSFORM = np.array([[0, 0, -1, 0], [-1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 0, 1]])
+const W_U_TRANSFORM = new THREE.Matrix4().set(
+  0,  0, -1, 0,
+ -1,  0,  0, 0,
+  0,  1,  0, 0,
+  0,  0,  0, 1
+);
+
+// from World camera convention to USD camera convention
+// U_W_TRANSFORM = np.array([[0, -1, 0, 0], [0, 0, 1, 0], [-1, 0, 0, 0], [0, 0, 0, 1]])
+const U_W_TRANSFORM = new THREE.Matrix4().set(
+  0, -1,  0, 0,
+  0,  0,  1, 0,
+ -1,  0,  0, 0,
+  0,  0,  0, 1
+);
+
+// Helper to get quaternion representing the rotation from one frame to USD
+const getToUSDQuaternion = (from: AxisSystem): THREE.Quaternion => {
+  const q = new THREE.Quaternion();
+  switch (from) {
+    case 'ros':
+      q.setFromRotationMatrix(U_R_TRANSFORM);
+      break;
+    case 'world':
+      q.setFromRotationMatrix(U_W_TRANSFORM);
+      break;
+    case 'usd':
+      q.identity();
+      break;
+  }
+  return q;
+};
+
+// Helper to get quaternion representing the rotation from USD to target frame
+const getFromUSDQuaternion = (to: AxisSystem): THREE.Quaternion => {
+  const q = new THREE.Quaternion();
+  switch (to) {
+    case 'ros':
+      q.setFromRotationMatrix(R_U_TRANSFORM);
+      break;
+    case 'world':
+      q.setFromRotationMatrix(W_U_TRANSFORM);
+      break;
+    case 'usd':
+      q.identity();
+      break;
+  }
+  return q;
+};
+
+export const convertRotationBasis = (
+  q: THREE.Quaternion,
+  from: AxisSystem,
+  to: AxisSystem
+): THREE.Quaternion => {
+  if (from === to) return q.clone();
+
+  // Strategy: Convert Input -> USD -> Output
+  // Q_final = Q_usd_to_target * Q_source_to_usd * Q_input
+  
+  const qToUSD = getToUSDQuaternion(from);
+  const qFromUSD = getFromUSDQuaternion(to);
+  
+  // Combine transformation: T = T_usd_to_target * T_source_to_usd
+  // In Three.js, A.multiply(B) results in A*B.
+  // We want qFrom * qTo (Apply ToUSD first, then FromUSD).
+  const transformQ = qFromUSD.clone().multiply(qToUSD);
+  
+  // Apply transformation to the input quaternion
+  // Q_final = Q_transform * Q_input
+  const result = transformQ.clone().multiply(q);
+  
+  return result;
 };

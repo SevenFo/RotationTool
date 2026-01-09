@@ -3,6 +3,7 @@ import React from 'react';
 import { Canvas } from '@react-three/fiber';
 import { OrbitControls, Grid, GizmoHelper, GizmoViewport, PerspectiveCamera, RoundedBox, Environment, ContactShadows } from '@react-three/drei';
 import * as THREE from 'three';
+import { Info } from 'lucide-react';
 
 // Fix for missing R3F intrinsic types in this environment
 declare global {
@@ -116,9 +117,17 @@ const SceneContent: React.FC<{ quaternion: THREE.Quaternion }> = ({ quaternion }
 
 const Visualizer: React.FC<VisualizerProps> = ({ quaternion }) => {
   return (
-    <div className="w-full h-full bg-gradient-to-br from-slate-50 to-slate-100 rounded-xl overflow-hidden border border-slate-200 shadow-inner relative">
-       <div className="absolute top-4 left-4 z-10 bg-white/60 backdrop-blur-md px-3 py-1.5 rounded-lg text-xs font-mono text-slate-600 pointer-events-none border border-white/50 shadow-sm">
-          Visualization Preview
+    <div className="w-full h-full bg-gradient-to-br from-slate-50 to-slate-100 rounded-xl overflow-hidden border border-slate-200 shadow-inner relative group/viz">
+       <div className="absolute top-4 left-4 z-10 flex items-start">
+          <div className="bg-white/80 backdrop-blur-md px-3 py-1.5 rounded-lg text-xs font-mono text-slate-600 border border-white/50 shadow-sm flex items-center gap-2 pointer-events-auto">
+            <span>Visualization Preview</span>
+            <div className="group relative flex items-center">
+              <Info size={14} className="text-slate-400 cursor-help hover:text-indigo-600 transition-colors" />
+              <div className="absolute left-0 top-full mt-2 w-56 bg-slate-800 text-white text-[10px] p-2.5 rounded shadow-lg opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-50 font-sans leading-relaxed">
+                 The 3D view shows the "Input" rotation applied to a standard object.
+              </div>
+            </div>
+          </div>
        </div>
       <Canvas shadows gl={{ antialias: true }}>
         <PerspectiveCamera makeDefault position={[3, 3, 4]} fov={50} />
