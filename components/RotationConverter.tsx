@@ -4,9 +4,257 @@ import { NumberInput, SectionTitle, MatrixInput } from './ui/InputFields';
 import Visualizer from './Visualizer';
 import { EulerOrder, EulerMode, AxisSystem } from '../types';
 import { round, toDegrees, toRadians, getQuaternionFromEuler, getEulerFromQuaternion, convertRotationBasis, parseCustomAxis } from '../utils/math';
-import { Rotate3D, Cuboid, RefreshCw, Grid3X3, Zap, Globe, ArrowRight, Settings2, Info, Code, Check, Copy, AlertCircle, HelpCircle } from 'lucide-react';
+import { Rotate3D, Cuboid, RefreshCw, Grid3X3, Zap, Globe, ArrowRight, Settings2, Info, Code, Check, Copy, AlertCircle, HelpCircle, Terminal, ChevronDown, ChevronRight } from 'lucide-react';
 
-// Helper for axis selector - Defined outside to prevent re-renders losing focus
+// --- HELPER COMPONENTS ---
+
+const CodeBlock = ({ code, label, collapsible = true }: { code: string; label?: string; collapsible?: boolean }) => {
+  const [copied, setCopied] = useState(false);
+  const [isCollapsed, setIsCollapsed] = useState(false);
+
+  const handleCopy = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    navigator.clipboard.writeText(code);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  };
+
+  return (
+    <div className="bg-slate-900 rounded-lg overflow-hidden shadow-md border border-slate-800 flex flex-col transition-all duration-200">
+      <div 
+        className={`flex items-center justify-between px-3 py-2 bg-slate-950 border-b border-slate-800 shrink-0 ${collapsible ? 'cursor-pointer hover:bg-slate-900' : ''}`}
+        onClick={() => collapsible && setIsCollapsed(!isCollapsed)}
+      >
+        <div className="flex items-center gap-2 text-slate-400 text-xs font-medium select-none">
+          {collapsible && (
+            isCollapsed ? <ChevronRight size={14} /> : <ChevronDown size={14} />
+          )}
+          <Terminal size={14} />
+          <span>{label || 'Python / Scipy'}</span>
+        </div>
+        <button
+          onClick={handleCopy}
+          className="text-xs text-slate-400 hover:text-white flex items-center gap-1 transition-colors z-10"
+        >
+          {copied ? <Check size={12} className="text-emerald-500" /> : <Copy size={12} />}
+          {copied ? "Copied" : "Copy"}
+        </button>
+      </div>
+      {!isCollapsed && (
+        <div className="relative">
+          <pre className="p-3 overflow-x-auto text-[10px] leading-relaxed font-mono text-slate-300 custom-scrollbar max-h-64">
+            <code>{code}</code>
+          </pre>
+        </div>
+      )}
+    </div>
+  );
+};
+
+// --- INPUT SNIPPET GENERATOR ---
+
+const InputScipySnippet = ({ 
+  euler, quaternion, matrix, axisAngle, eulerSettings, degrees 
+}: { 
+  euler: { x: number, y: number, z: number },
+  quaternion: { x: number, y: number, z: number, w: number },
+  matrix: number[],
+  axisAngle: { x: number, y: number, z: number, angle: number },
+  eulerSettings: { order: EulerOrder, mode: EulerMode },
+  degrees: boolean
+}) => {
+  const [activeTab, setActiveTab] = useState<'euler'|'quat'|'matrix'|'rotvec'>('euler');
+
+  const generateCode = () => {
+    const header = `from scipy.spatial.transform import Rotation as R
+import numpy as np
+
+# --- 1. Define Rotation Object 'r' ---`;
+
+    let defCode = '';
+    const footer = `
+# --- 2. Convert to other formats ---
+# quat = r.as_quat()        # [x, y, z, w]
+# euler = r.as_euler('xyz', degrees=True)
+# matrix = r.as_matrix()
+# rotvec = r.as_rotvec()    # axis * angle`;
+
+    switch (activeTab) {
+      case 'euler': {
+        const seq = eulerSettings.mode === 'intrinsic' ? eulerSettings.order : eulerSettings.order.toLowerCase();
+        const vals = `[${euler.x}, ${euler.y}, ${euler.z}]`;
+        defCode = `
+# From Euler Angles (${eulerSettings.mode}, ${eulerSettings.order})
+r = R.from_euler('${seq}', ${vals}, degrees=${degrees ? 'True' : 'False'})`;
+        break;
+      }
+      case 'quat': {
+        // Scipy is (x, y, z, w) scalar-last
+        const qStr = `[${quaternion.x.toFixed(6)}, ${quaternion.y.toFixed(6)}, ${quaternion.z.toFixed(6)}, ${quaternion.w.toFixed(6)}]`;
+        defCode = `
+# From Quaternion [x, y, z, w]
+r = R.from_quat(${qStr})`;
+        break;
+      }
+      case 'matrix': {
+        // Format matrix string
+        const m = matrix;
+        const rows = [
+          `[${m[0].toFixed(4)}, ${m[4].toFixed(4)}, ${m[8].toFixed(4)}]`,
+          `[${m[1].toFixed(4)}, ${m[5].toFixed(4)}, ${m[9].toFixed(4)}]`,
+          `[${m[2].toFixed(4)}, ${m[6].toFixed(4)}, ${m[10].toFixed(4)}]`
+        ];
+        defCode = `
+# From Rotation Matrix (3x3)
+m = np.array([
+    ${rows[0]},
+    ${rows[1]},
+    ${rows[2]}
+])
+r = R.from_matrix(m)`;
+        break;
+      }
+      case 'rotvec': {
+        // Axis * Angle (radians)
+        // If angle is in degrees, convert for calculation
+        const angRad = degrees ? (axisAngle.angle * Math.PI / 180) : axisAngle.angle;
+        // The vector magnitude is the angle
+        const vx = axisAngle.x * angRad;
+        const vy = axisAngle.y * angRad;
+        const vz = axisAngle.z * angRad;
+        
+        defCode = `
+# From Rotation Vector (Axis * Angle in radians)
+# Axis: [${axisAngle.x}, ${axisAngle.y}, ${axisAngle.z}], Angle: ${axisAngle.angle}${degrees ? '°' : 'rad'}
+r = R.from_rotvec([${vx.toFixed(4)}, ${vy.toFixed(4)}, ${vz.toFixed(4)}])`;
+        break;
+      }
+    }
+
+    return header + defCode + footer;
+  };
+
+  return (
+    <div className="flex flex-col gap-2">
+      <div className="flex gap-2 border-b border-slate-200 pb-1">
+        {(['euler', 'quat', 'matrix', 'rotvec'] as const).map(tab => (
+          <button
+            key={tab}
+            onClick={() => setActiveTab(tab)}
+            className={`text-[10px] font-bold uppercase px-2 py-1 rounded-t-md transition-colors ${
+              activeTab === tab 
+                ? 'bg-slate-800 text-white' 
+                : 'text-slate-500 hover:text-indigo-600 hover:bg-slate-100'
+            }`}
+          >
+            {tab === 'rotvec' ? 'Axis-Angle' : tab}
+          </button>
+        ))}
+      </div>
+      <CodeBlock code={generateCode()} label="Input Definition Snippet" />
+    </div>
+  );
+};
+
+// --- COORDINATE CONVERSION SNIPPET GENERATOR ---
+
+const ConversionScipySnippet = ({ 
+  inputSystem, 
+  outputSystem 
+}: { 
+  inputSystem: AxisSystem, 
+  outputSystem: AxisSystem 
+}) => {
+  
+  // Helper to get basis matrix numbers
+  const getBasisMatrix = (sys: AxisSystem): number[] | null => {
+    if (sys === 'usd') return [1,0,0, 0,1,0, 0,0,1]; // Identity
+    if (sys === 'ros') return [1,0,0, 0,-1,0, 0,0,-1]; // U_R
+    if (sys === 'world') return [0,0,-1, -1,0,0, 0,1,0]; // W_U
+    
+    // Custom
+    if (typeof sys === 'string') {
+      const res = parseCustomAxis(sys);
+      if (res.valid && res.matrix) {
+        const e = res.matrix.elements;
+        // Matrix4 is 4x4 col-major. We want 3x3 row-major for printing.
+        // e: 0,1,2,3 (col0), 4,5,6,7 (col1)...
+        return [
+          e[0], e[4], e[8],
+          e[1], e[5], e[9],
+          e[2], e[6], e[10]
+        ];
+      }
+    }
+    return null; // Fallback
+  };
+
+  const getSystemInfo = (sys: AxisSystem, defaultSlug: string) => {
+    if (sys === 'usd') return { name: 'USD', slug: 'usd' };
+    if (sys === 'ros') return { name: 'ROS', slug: 'ros' };
+    if (sys === 'world') return { name: 'World', slug: 'world' };
+    if (typeof sys === 'string' && sys.length === 3) {
+      return { name: `Custom(${sys})`, slug: sys.toLowerCase() };
+    }
+    return { name: 'Input', slug: defaultSlug };
+  };
+
+  const fmtMat = (m: number[]) => {
+    return `np.array([
+    [${m[0]}, ${m[1]}, ${m[2]}],
+    [${m[3]}, ${m[4]}, ${m[5]}],
+    [${m[6]}, ${m[7]}, ${m[8]}]
+])`;
+  };
+
+  const generateCode = () => {
+    const matIn = getBasisMatrix(inputSystem);
+    const matOut = getBasisMatrix(outputSystem);
+
+    if (!matIn || !matOut) return "# Invalid Axis Configuration";
+
+    const inSys = getSystemInfo(inputSystem, 'in');
+    const outSys = getSystemInfo(outputSystem, 'out');
+
+    // Dynamically naming variables
+    const mIn = `m_${inSys.slug}_usd`;
+    const rIn = `r_${inSys.slug}_usd`;
+    const mOut = `m_${outSys.slug}_usd`;
+    const rOut = `r_${outSys.slug}_usd`;
+
+    return `from scipy.spatial.transform import Rotation as R
+import numpy as np
+
+# Assuming 'r' is your input rotation (from previous step)
+
+# --- Coordinate System Transformation ---
+# Strategy: R_final = R_input * (R_${inSys.slug}_to_usd * R_${outSys.slug}_to_usd.inv())
+
+# 1. Define Basis: ${inSys.name} -> Reference (USD)
+${mIn} = ${fmtMat(matIn)}
+${rIn} = R.from_matrix(${mIn})
+
+# 2. Define Basis: ${outSys.name} -> Reference (USD)
+${mOut} = ${fmtMat(matOut)}
+${rOut} = R.from_matrix(${mOut})
+
+# 3. Compute Basis Change Transform
+# We want T s.t. Basis_Out = Basis_In * T
+# T = ${rIn} * ${rOut}.inv()
+t_basis = ${rIn} * ${rOut}.inv()
+
+# 4. Apply Transform (Intrinsic / Body-Fixed multiply)
+r_final = r * t_basis
+
+print(f"Converted Quat: {r_final.as_quat()}")`;
+  };
+
+  return <CodeBlock code={generateCode()} label="Coordinate Conversion Snippet" />;
+};
+
+
+// --- MAIN COMPONENT ---
+
 const AxisSelector = ({ 
   mode, setMode, preset, setPreset, customStr, setCustomStr, validation 
 }: { 
@@ -91,8 +339,6 @@ export const RotationConverter: React.FC = () => {
   const [outputAxisMode, setOutputAxisMode] = useState<'preset' | 'custom'>('preset');
   const [outputPreset, setOutputPreset] = useState<AxisSystem>('world');
   const [outputCustomStr, setOutputCustomStr] = useState("RFU");
-  
-  const [snippetCopied, setSnippetCopied] = useState(false);
 
   // Validate Custom Inputs
   const inputCustomValidation = parseCustomAxis(inputCustomStr);
@@ -248,34 +494,6 @@ export const RotationConverter: React.FC = () => {
       );
     });
   };
-
-  // Generate Python Code Snippet based on current Input settings
-  const generatePythonSnippet = () => {
-    const isIntrinsic = eulerMode === 'intrinsic';
-    // Scipy: Uppercase = Intrinsic, Lowercase = Extrinsic
-    const seq = isIntrinsic ? eulerOrder : eulerOrder.toLowerCase();
-    
-    // Values in list must follow the sequence order
-    const axes = eulerOrder.split('');
-    const values = axes.map(a => displayEuler[a.toLowerCase() as 'x'|'y'|'z']);
-    const valStr = `[${values.join(', ')}]`;
-
-    return `from scipy.spatial.transform import Rotation as R
-import numpy as np
-
-# Create rotation from ${isIntrinsic ? 'Intrinsic' : 'Extrinsic'} ${eulerOrder} Euler angles
-r = R.from_euler('${seq}', ${valStr}, degrees=${useDegrees ? 'True' : 'False'})
-
-print(f"Quaternion (xyzw): {r.as_quat()}")
-# Note: Scipy as_quat() returns scalar-last (xyzw) by default
-# Use as_quat(scalar_first=True) for (wxyz)`;
-  };
-
-  const handleCopySnippet = () => {
-    navigator.clipboard.writeText(generatePythonSnippet());
-    setSnippetCopied(true);
-    setTimeout(() => setSnippetCopied(false), 2000);
-  }
 
   return (
     <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 h-full">
@@ -437,6 +655,18 @@ print(f"Quaternion (xyzw): {r.as_quat()}")
           </div>
         </div>
 
+        {/* INPUT SNIPPET (NEW LOCATION) */}
+        <div className="pt-2">
+          <InputScipySnippet 
+             euler={displayEuler}
+             quaternion={displayQuat}
+             matrix={rotationMatrix.elements}
+             axisAngle={displayAxis}
+             eulerSettings={{ order: eulerOrder, mode: eulerMode }}
+             degrees={useDegrees}
+          />
+        </div>
+
       </div>
 
       {/* RIGHT COLUMN: VISUALIZATION */}
@@ -550,28 +780,17 @@ print(f"Quaternion (xyzw): {r.as_quat()}")
                   </div>
                 </div>
              </div>
+             
+             {/* COORDINATE CONVERSION SNIPPET (NEW LOCATION) */}
+             <div className="mt-2">
+               <ConversionScipySnippet 
+                 inputSystem={finalInputAxis}
+                 outputSystem={finalOutputAxis}
+               />
+             </div>
            </div>
         </div>
 
-        {/* SCIPY CODE SNIPPET (NEW) */}
-        <div className="bg-slate-900 rounded-lg overflow-hidden shadow-md border border-slate-800">
-            <div className="flex items-center justify-between px-3 py-2 bg-slate-950 border-b border-slate-800">
-                <div className="flex items-center gap-2 text-slate-400 text-xs font-medium">
-                    <Code size={14} />
-                    <span>Scipy Snippet (Matches Current Input)</span>
-                </div>
-                <button 
-                    onClick={handleCopySnippet}
-                    className="text-xs text-slate-400 hover:text-white flex items-center gap-1 transition-colors"
-                >
-                    {snippetCopied ? <Check size={12} className="text-emerald-500"/> : <Copy size={12}/>}
-                    {snippetCopied ? "Copied" : "Copy"}
-                </button>
-            </div>
-            <pre className="p-3 overflow-x-auto text-[10px] leading-relaxed font-mono text-slate-300">
-                <code>{generatePythonSnippet()}</code>
-            </pre>
-        </div>
       </div>
     </div>
   );
