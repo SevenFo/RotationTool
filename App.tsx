@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { RotationConverter } from './components/RotationConverter';
 import { RotationCalculator } from './components/RotationCalculator';
-import { Orbit, ArrowRightLeft, RefreshCw } from 'lucide-react';
+import { Orbit, ArrowRightLeft, RefreshCw, Github } from 'lucide-react';
 
 type Tab = 'converter' | 'calculator';
 
@@ -11,14 +11,25 @@ const App: React.FC = () => {
   return (
     <div className="min-h-screen p-4 md:p-8 max-w-7xl mx-auto">
       <header className="mb-8 border-b border-slate-200 pb-6">
-        <div className="flex items-center gap-3 mb-4">
-          <div className="bg-indigo-600 p-2 rounded-lg shadow-lg shadow-indigo-200">
-            <Orbit className="text-white" size={24} />
+        <div className="flex items-center justify-between mb-4">
+          <div className="flex items-center gap-3">
+            <div className="bg-indigo-600 p-2 rounded-lg shadow-lg shadow-indigo-200">
+              <Orbit className="text-white" size={24} />
+            </div>
+            <div>
+              <h1 className="text-2xl font-bold text-slate-900 tracking-tight">RotationTool</h1>
+              <p className="text-sm text-slate-500 font-medium">3D Orientation & Math Utility</p>
+            </div>
           </div>
-          <div>
-            <h1 className="text-2xl font-bold text-slate-900 tracking-tight">RotationTool</h1>
-            <p className="text-sm text-slate-500 font-medium">3D Orientation & Math Utility</p>
-          </div>
+          <a 
+            href="https://github.com/SevenFo/RotationTool" 
+            target="_blank" 
+            rel="noopener noreferrer"
+            className="text-slate-400 hover:text-slate-800 transition-colors p-2 hover:bg-slate-100 rounded-full"
+            title="View source on GitHub"
+          >
+            <Github size={24} />
+          </a>
         </div>
 
         {/* Navigation Tabs */}
