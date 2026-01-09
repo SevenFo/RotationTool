@@ -4,7 +4,7 @@ import { NumberInput, SectionTitle, MatrixInput } from './ui/InputFields';
 import Visualizer from './Visualizer';
 import { EulerOrder, EulerMode, AxisSystem } from '../types';
 import { round, toDegrees, toRadians, getQuaternionFromEuler, getEulerFromQuaternion, convertRotationBasis } from '../utils/math';
-import { Rotate3D, Cuboid, RefreshCw, Grid3X3, Zap, Globe, ArrowRight, Settings2, Info } from 'lucide-react';
+import { Rotate3D, Cuboid, RefreshCw, Grid3X3, Zap, Globe, ArrowRight, Settings2, Info, Code, Check, Copy } from 'lucide-react';
 
 export const RotationConverter: React.FC = () => {
   // MASTER STATE: Everything is derived from this quaternion
@@ -12,24 +12,21 @@ export const RotationConverter: React.FC = () => {
   
   // UI PREFERENCES - GLOBAL INPUT
   const [useDegrees, setUseDegrees] = useState(true);
-  const [eulerOrder, setEulerOrder] = useState<EulerOrder>('XYZ');
-  const [eulerMode, setEulerMode] = useState<EulerMode>('intrinsic');
+  const [eulerOrder, setEulerOrder] = useState<EulerOrder>('ZYX');
+  const [eulerMode, setEulerMode] = useState<EulerMode>('extrinsic');
 
   // UI PREFERENCES - CONVERTER OUTPUT
-  // Independent controls for the Coordinate System Converter section
   const [converterEulerOrder, setConverterEulerOrder] = useState<EulerOrder>('XYZ');
   const [converterEulerMode, setConverterEulerMode] = useState<EulerMode>('intrinsic');
   
   // INPUT BUFFER STATE
-  // To prevent "jumping" values due to Euler singularities/aliases (Gimbal lock),
-  // we store the exact values the user typed and display those instead of the recalculated ones
-  // as long as the user is actively editing the Euler section.
   const [eulerInputBuffer, setEulerInputBuffer] = useState({ x: 0, y: 0, z: 0 });
   const [lastUpdateSource, setLastUpdateSource] = useState<'euler' | 'other'>('other');
   
   // AXIS CONVERSION STATE
   const [inputAxis, setInputAxis] = useState<AxisSystem>('ros');
   const [outputAxis, setOutputAxis] = useState<AxisSystem>('world');
+  const [snippetCopied, setSnippetCopied] = useState(false);
 
   // DERIVED VALUES 
   const validQuat = quaternion.clone();
@@ -38,7 +35,6 @@ export const RotationConverter: React.FC = () => {
   }
 
   // Euler Calculation (Input Section)
-  // 1. Calculate the canonical Euler angles from the current quaternion
   const derivedEulerRaw = getEulerFromQuaternion(validQuat, eulerOrder, eulerMode);
   const derivedEulerDeg = {
     x: round(useDegrees ? toDegrees(derivedEulerRaw.x) : derivedEulerRaw.x),
@@ -46,7 +42,6 @@ export const RotationConverter: React.FC = () => {
     z: round(useDegrees ? toDegrees(derivedEulerRaw.z) : derivedEulerRaw.z),
   };
 
-  // 2. Decide what to display: The manual buffer (if user just typed it) or the canonical derived value
   const displayEuler = lastUpdateSource === 'euler' ? eulerInputBuffer : derivedEulerDeg;
 
   // Quaternion (Raw Display)
@@ -79,28 +74,22 @@ export const RotationConverter: React.FC = () => {
 
   // CONVERTED AXIS VALUES
   const convertedQuat = convertRotationBasis(validQuat, inputAxis, outputAxis);
-  // Use independent settings for the converted euler output
   const convertedEuler = getEulerFromQuaternion(convertedQuat, converterEulerOrder, converterEulerMode);
 
   // HANDLERS
   const updateFromEuler = (axisName: 'x' | 'y' | 'z', val: number) => {
-    // 1. Update the buffer with exactly what the user typed
     const newBuffer = { ...displayEuler, [axisName]: val };
     setEulerInputBuffer(newBuffer);
     setLastUpdateSource('euler');
 
-    // 2. Convert to radians for calculation
     const radX = useDegrees ? toRadians(newBuffer.x) : newBuffer.x;
     const radY = useDegrees ? toRadians(newBuffer.y) : newBuffer.y;
     const radZ = useDegrees ? toRadians(newBuffer.z) : newBuffer.z;
 
-    // 3. Update the master quaternion
     const q = getQuaternionFromEuler(radX, radY, radZ, eulerOrder, eulerMode);
     setQuaternion(q);
   };
 
-  // When changing order/mode, we want the Physical Rotation (Quaternion) to stay the same,
-  // so the Euler numbers MUST change. We switch source to 'other' to force recalculation.
   const handleEulerSettingChange = (type: 'order' | 'mode', val: string) => {
     if (type === 'order') setEulerOrder(val as EulerOrder);
     if (type === 'mode') setEulerMode(val as EulerMode);
@@ -158,6 +147,62 @@ export const RotationConverter: React.FC = () => {
     setQuaternion(new THREE.Quaternion(0, 0, 0, 1));
     setLastUpdateSource('other');
   };
+
+  const renderEulerInputs = () => {
+    const axes = eulerOrder.split('');
+    return axes.map((axis) => {
+      const axisKey = axis.toLowerCase() as 'x' | 'y' | 'z';
+      return (
+        <NumberInput 
+          key={axisKey}
+          label={`${axis} (${useDegrees ? 'deg' : 'rad'})`} 
+          value={displayEuler[axisKey]} 
+          onChangeValue={(v) => updateFromEuler(axisKey, v)} 
+        />
+      );
+    });
+  };
+
+  const renderCanonicalEulerOutputs = () => {
+    const axes = eulerOrder.split('');
+    return axes.map((axis) => {
+      const axisKey = axis.toLowerCase() as 'x' | 'y' | 'z';
+      return (
+         <div key={axisKey}>
+            <span className="text-[10px] font-bold text-slate-400 block mb-1">{axis}</span>
+            <span className="font-mono text-sm text-slate-700">{derivedEulerDeg[axisKey]}</span>
+         </div>
+      );
+    });
+  };
+
+  // Generate Python Code Snippet based on current Input settings
+  const generatePythonSnippet = () => {
+    const isIntrinsic = eulerMode === 'intrinsic';
+    // Scipy: Uppercase = Intrinsic, Lowercase = Extrinsic
+    const seq = isIntrinsic ? eulerOrder : eulerOrder.toLowerCase();
+    
+    // Values in list must follow the sequence order
+    const axes = eulerOrder.split('');
+    const values = axes.map(a => displayEuler[a.toLowerCase() as 'x'|'y'|'z']);
+    const valStr = `[${values.join(', ')}]`;
+
+    return `from scipy.spatial.transform import Rotation as R
+import numpy as np
+
+# Create rotation from ${isIntrinsic ? 'Intrinsic' : 'Extrinsic'} ${eulerOrder} Euler angles
+r = R.from_euler('${seq}', ${valStr}, degrees=${useDegrees ? 'True' : 'False'})
+
+print(f"Quaternion (xyzw): {r.as_quat()}")
+# Note: Scipy as_quat() returns scalar-last (xyzw) by default
+# Use as_quat(scalar_first=True) for (wxyz)`;
+  };
+
+  const handleCopySnippet = () => {
+    navigator.clipboard.writeText(generatePythonSnippet());
+    setSnippetCopied(true);
+    setTimeout(() => setSnippetCopied(false), 2000);
+  }
 
   return (
     <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 h-full">
@@ -257,9 +302,7 @@ export const RotationConverter: React.FC = () => {
           </div>
 
           <div className="grid grid-cols-3 gap-4">
-            <NumberInput label={`X (${useDegrees ? 'deg' : 'rad'})`} value={displayEuler.x} onChangeValue={(v) => updateFromEuler('x', v)} />
-            <NumberInput label={`Y (${useDegrees ? 'deg' : 'rad'})`} value={displayEuler.y} onChangeValue={(v) => updateFromEuler('y', v)} />
-            <NumberInput label={`Z (${useDegrees ? 'deg' : 'rad'})`} value={displayEuler.z} onChangeValue={(v) => updateFromEuler('z', v)} />
+             {renderEulerInputs()}
           </div>
 
           {/* Canonical/Optimal Euler Output */}
@@ -283,18 +326,7 @@ export const RotationConverter: React.FC = () => {
              </div>
              
              <div className="bg-slate-50 border border-slate-200 rounded-lg p-3 grid grid-cols-3 gap-4 mb-3">
-                 <div>
-                    <span className="text-[10px] font-bold text-slate-400 block mb-1">X</span>
-                    <span className="font-mono text-sm text-slate-700">{derivedEulerDeg.x}</span>
-                 </div>
-                 <div>
-                    <span className="text-[10px] font-bold text-slate-400 block mb-1">Y</span>
-                    <span className="font-mono text-sm text-slate-700">{derivedEulerDeg.y}</span>
-                 </div>
-                 <div>
-                    <span className="text-[10px] font-bold text-slate-400 block mb-1">Z</span>
-                    <span className="font-mono text-sm text-slate-700">{derivedEulerDeg.z}</span>
-                 </div>
+                 {renderCanonicalEulerOutputs()}
              </div>
           </div>
         </div>
@@ -329,7 +361,7 @@ export const RotationConverter: React.FC = () => {
         <div className="min-h-[400px] h-[400px] lg:h-[600px] rounded-xl overflow-hidden shadow-lg border border-slate-200">
            <Visualizer quaternion={quaternion} />
         </div>
-        
+
         {/* AXIS CONVERSION (RIGHT COLUMN) */}
         <div className="bg-indigo-50 p-6 rounded-xl border border-indigo-100 shadow-sm">
            <SectionTitle>
@@ -408,6 +440,26 @@ export const RotationConverter: React.FC = () => {
                 </div>
              </div>
            </div>
+        </div>
+
+        {/* SCIPY CODE SNIPPET (NEW) */}
+        <div className="bg-slate-900 rounded-lg overflow-hidden shadow-md border border-slate-800">
+            <div className="flex items-center justify-between px-3 py-2 bg-slate-950 border-b border-slate-800">
+                <div className="flex items-center gap-2 text-slate-400 text-xs font-medium">
+                    <Code size={14} />
+                    <span>Scipy Snippet (Matches Current Input)</span>
+                </div>
+                <button 
+                    onClick={handleCopySnippet}
+                    className="text-xs text-slate-400 hover:text-white flex items-center gap-1 transition-colors"
+                >
+                    {snippetCopied ? <Check size={12} className="text-emerald-500"/> : <Copy size={12}/>}
+                    {snippetCopied ? "Copied" : "Copy"}
+                </button>
+            </div>
+            <pre className="p-3 overflow-x-auto text-[10px] leading-relaxed font-mono text-slate-300">
+                <code>{generatePythonSnippet()}</code>
+            </pre>
         </div>
       </div>
     </div>
